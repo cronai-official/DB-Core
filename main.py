@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import datetime
-
+import os
 # --- SETTINGS ---
 TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD_ID = 1471883562004516924
