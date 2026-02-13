@@ -3,6 +3,25 @@ from discord.ext import commands
 from discord import app_commands
 import datetime
 import os
+from flask import Flask
+from threading import Thread
+
+# --- WEB SERVER FOR RENDER (KEEP ALIVE) ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run():
+    # Render provides PORT environment variable automatically
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
 # --- SETTINGS ---
 TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD_ID = 1471883562004516924
@@ -41,7 +60,7 @@ class TicketView(discord.ui.View):
         
         embed = discord.Embed(
             title="✨ Session Started",
-            description=f"Welcome {interaction.user.mention},\n\nMain developer <@{OWNER_ID}> ko notify kar diya gaya hai. Tab tak apni requirements yahan likh dein.",
+            description=f"Welcome {interaction.user.mention},\n\nThe developer <@{OWNER_ID}> has been notified. Please state your requirements and budget below.",
             color=0x2b2d31
         )
         embed.set_footer(text="Discord Bots • Professional Service")
@@ -66,15 +85,15 @@ async def on_ready():
 @bot.tree.command(name="setup-ticket", description="Setup the ticket system")
 async def setup_ticket(interaction: discord.Interaction):
     if interaction.user.id != OWNER_ID:
-        return await interaction.response.send_message("Only Owner can do this!", ephemeral=True)
+        return await interaction.response.send_message("Permission Denied: Only the Owner can run this.", ephemeral=True)
     
     embed = discord.Embed(
         title="📥 Create a Ticket",
-        description="Bot development ya queries ke liye niche click karein.",
+        description="Click the button below to start a conversation for development or queries.",
         color=0x2b2d31
     )
     await interaction.channel.send(embed=embed, view=TicketView())
-    await interaction.response.send_message("Setup Complete.", ephemeral=True)
+    await interaction.response.send_message("Ticket system setup complete.", ephemeral=True)
 
 # 2. Vouch System
 @bot.tree.command(name="vouch", description="Submit your feedback")
@@ -82,23 +101,26 @@ async def vouch(interaction: discord.Interaction, stars: int, feedback: str):
     vouch_chan = bot.get_channel(VOUCH_CHANNEL_ID)
     
     if stars < 1 or stars > 5:
-        return await interaction.response.send_message("Stars 1-5 ke beech rakho!", ephemeral=True)
+        return await interaction.response.send_message("Please provide a rating between 1 and 5 stars.", ephemeral=True)
     
     embed = discord.Embed(title="⭐ Client Feedback", color=0x00ff7f, timestamp=datetime.datetime.utcnow())
-    embed.add_field(name="User", value=interaction.user.mention, inline=True)
+    embed.add_field(name="Client", value=interaction.user.mention, inline=True)
     embed.add_field(name="Rating", value="★" * stars, inline=True)
     embed.add_field(name="Comment", value=feedback, inline=False)
-    embed.set_thumbnail(url=interaction.user.display_avatar.url)
-    embed.set_footer(text="Verified Order")
+    
+    if interaction.user.display_avatar:
+        embed.set_thumbnail(url=interaction.user.display_avatar.url)
+        
+    embed.set_footer(text="Verified Order • Discord Bots")
     
     await vouch_chan.send(embed=embed)
-    await interaction.response.send_message("Vouch Posted!", ephemeral=True)
+    await interaction.response.send_message("Thank you! Your feedback has been posted.", ephemeral=True)
 
 # 3. Set Tier
 @bot.tree.command(name="set-tier", description="Assign client roles based on payment")
 async def set_tier(interaction: discord.Interaction, member: discord.Member, amount: int):
     if interaction.user.id != OWNER_ID:
-        return await interaction.response.send_message("Denied!", ephemeral=True)
+        return await interaction.response.send_message("Permission Denied.", ephemeral=True)
     
     role_id = ROLES["Client"]
     tier_name = "Client"
@@ -114,18 +136,24 @@ async def set_tier(interaction: discord.Interaction, member: discord.Member, amo
         tier_name = "Vested"
         
     role = interaction.guild.get_role(role_id)
-    await member.add_roles(role)
-    await interaction.response.send_message(f"✅ {member.mention} promoted to **{tier_name}** ({amount} INR).")
+    if role:
+        await member.add_roles(role)
+        await interaction.response.send_message(f"✅ {member.mention} has been promoted to **{tier_name}** ({amount} INR).")
+    else:
+        await interaction.response.send_message("Role not found. Please check Role IDs.", ephemeral=True)
 
 # 4. Features (40-50 Items List)
 @bot.tree.command(name="features", description="List of all bot capabilities")
 async def features(interaction: discord.Interaction):
-    embed = discord.Embed(title="🛠️ Bot Feature Capabilities", color=0x2b2d31)
-    embed.add_field(name="Automation", value="• Web Scrapers\n• Auto-Moderation\n• Social Media Sync\n• Webhook Managers\n• Auto-Responders", inline=True)
-    embed.add_field(name="Economy", value="• Custom Currency\n• Shop System\n• Gambling Games\n• Daily Rewards\n• Trading Logic", inline=True)
-    embed.add_field(name="Security", value="• Anti-Spam\n• Captcha System\n• Role Persistence\n• Log Tracking\n• Invite Blocker", inline=False)
-    embed.add_field(name="Premium Features", value="• MySQL/SQLite Support\n• API Integration\n• Custom Dashboards\n• Music Player\n• Ticket Analytics", inline=False)
-    embed.set_footer(text="And 30+ more custom modules available...")
+    embed = discord.Embed(title="🛠️ Advanced Bot Capabilities", color=0x2b2d31)
+    embed.add_field(name="Automation", value="• Web Scraping & Data Extraction\n• Social Media API Integration\n• Auto-Moderation & Verification\n• Webhook & Data Syncing\n• Intelligent Auto-Responders", inline=True)
+    embed.add_field(name="Economy Systems", value="• Multi-Currency Economy\n• Shop & Inventory Logic\n• Gambling & Game Modules\n• Daily/Weekly Reward Systems\n• Secure Trading Mechanisms", inline=True)
+    embed.add_field(name="Security & Utility", value="• Anti-Spam & Anti-Nuke Protection\n• Advanced Captcha Verification\n• Invitation & Role Tracking\n• Detailed Transaction Logging\n• Database Integration (MySQL/SQLite)", inline=False)
+    embed.add_field(name="Enterprise Features", value="• Custom API Wrapper Development\n• Multi-Language Support\n• High-Performance Persistent Tickets\n• Advanced Analytic Dashboards\n• Automated Deployment Scripts", inline=False)
+    embed.set_footer(text="Equipped with 50+ custom modular solutions.")
     await interaction.response.send_message(embed=embed)
 
+# Start Web Server then Bot
+keep_alive()
 bot.run(TOKEN)
+                                                       
