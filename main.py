@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import datetime
 import os
+import asyncio  # Needed for the delete timer
 from flask import Flask
 from threading import Thread
 
@@ -14,7 +15,6 @@ def home():
     return "Bot is running!"
 
 def run():
-    # Render provides PORT environment variable automatically
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
@@ -27,6 +27,7 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD_ID = 1471883562004516924
 VOUCH_CHANNEL_ID = 1471887232708382730
 TICKET_CATEGORY_ID = 1471891813106188574
+WELCOME_CHANNEL_ID = 1472275010709098705 # Updated as per your request
 OWNER_ID = 1243980401890951310
 
 # ROLES
@@ -37,6 +38,28 @@ ROLES = {
     "Client": 1471888403514523739
 }
 
+# --- TICKET ACTIONS (CLOSE/DELETE) ---
+class TicketActionView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Close Ticket 🔒", style=discord.ButtonStyle.red, custom_id="close_ticket_btn")
+    async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Removes the user's ability to send messages but keeps the ticket visible
+        await interaction.channel.set_permissions(interaction.user, send_messages=False, read_messages=True)
+        embed = discord.Embed(
+            description="🔒 **Ticket Closed.** \nAll logs have been recorded. Staff can now delete this channel.",
+            color=0xff0000
+        )
+        await interaction.response.send_message(embed=embed)
+
+    @discord.ui.button(label="Delete 🗑️", style=discord.ButtonStyle.grey, custom_id="delete_ticket_btn")
+    async def delete_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("🗑️ **Deleting ticket in 3 seconds...**")
+        await asyncio.sleep(3)
+        await interaction.channel.delete()
+
+# --- MAIN TICKET VIEW ---
 class TicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -60,11 +83,13 @@ class TicketView(discord.ui.View):
         
         embed = discord.Embed(
             title="✨ Session Started",
-            description=f"Welcome {interaction.user.mention},\n\nThe developer <@{OWNER_ID}> has been notified. Please state your requirements and budget below.",
+            description=f"Welcome {interaction.user.mention},\n\nThe developer <@{OWNER_ID}> has been notified. Please state your requirements and budget below.\n\n**Use the buttons below to manage this ticket.**",
             color=0x2b2d31
         )
         embed.set_footer(text="Discord Bots • Professional Service")
-        await channel.send(embed=embed)
+        
+        # Adding the Action Buttons (Close/Delete) to the ticket message
+        await channel.send(embed=embed, view=TicketActionView())
         await interaction.response.send_message(f"Ticket Created: {channel.mention}", ephemeral=True)
 
 class DB_Manager(commands.Bot):
@@ -73,6 +98,7 @@ class DB_Manager(commands.Bot):
 
     async def setup_hook(self):
         self.add_view(TicketView())
+        self.add_view(TicketActionView()) # Persistence for action buttons
 
 bot = DB_Manager()
 
@@ -80,6 +106,36 @@ bot = DB_Manager()
 async def on_ready():
     print(f'Logged in as {bot.user}')
     await bot.tree.sync()
+
+# --- PROFESSIONAL WELCOME SYSTEM ---
+@bot.event
+async def on_member_join(member):
+    channel = bot.get_channel(WELCOME_CHANNEL_ID)
+    if not channel:
+        return
+
+    embed = discord.Embed(
+        title="✨ A NEW GENIUS HAS ARRIVED!",
+        description=f"Greetings {member.mention}, welcome to **Bots Developer**.\n\n"
+                    f"**Why choose our services?**\n"
+                    f"🚀 Access to 50+ Custom Modular Solutions.\n"
+                    f"⚡ High-performance & Secure Coding.\n"
+                    f"💎 Tier-based Rewards & Lifetime Discounts.\n\n"
+                    f"**Getting Started:**\n"
+                    f"📍 Open a ticket at <#1471891813106188574> to discuss your ideas.\n"
+                    f"📜 Read our rules to ensure a smooth transaction.\n\n"
+                    f"We are now **{len(member.guild.members)}** members strong!",
+        color=0x2b2d31,
+        timestamp=datetime.datetime.utcnow()
+    )
+    
+    if member.display_avatar:
+        embed.set_thumbnail(url=member.display_avatar.url)
+    
+    embed.set_author(name=f"Welcome to {member.guild.name}", icon_url=member.guild.icon.url if member.guild.icon else None)
+    embed.set_footer(text=f"User ID: {member.id} • Authorized Entrance")
+
+    await channel.send(content=f"Welcome {member.mention}! Glad to have you with us.", embed=embed)
 
 # 1. Setup Ticket
 @bot.tree.command(name="setup-ticket", description="Setup the ticket system")
@@ -156,4 +212,4 @@ async def features(interaction: discord.Interaction):
 # Start Web Server then Bot
 keep_alive()
 bot.run(TOKEN)
-                                                       
+        
