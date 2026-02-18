@@ -39,6 +39,15 @@ ROLES = {
     "Client": 1471888403514523739
 }
 
+# --- DATABASE SIMULATION (Replace with real DB if needed) ---
+# For now, it tracks stats in memory
+user_stats = {} 
+
+def get_user_data(user_id):
+    if user_id not in user_stats:
+        user_stats[user_id] = {"orders": 0, "spent": 0}
+    return user_stats[user_id]
+
 # --- HEALTH ANALYSIS LOGIC ---
 def calculate_health_stats(guild):
     admin_count = len([m for m in guild.members if m.guild_permissions.administrator])
@@ -47,6 +56,14 @@ def calculate_health_stats(guild):
     activity_score = int((online / guild.member_count) * 100) if guild.member_count > 0 else 0
     total_health = int((security_score + activity_score) / 2)
     return total_health, security_score, activity_score
+
+# --- PAYMENT BUTTONS ---
+class OrderView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        # Replace these links with your actual payment links
+        self.add_item(discord.ui.Button(label="Pay via PayPal 💳", url="https://paypal.me/YOUR_ID", style=discord.ButtonStyle.link))
+        self.add_item(discord.ui.Button(label="Pay via UPI 📱", url="https://upilinks.in/payment-link", style=discord.ButtonStyle.link))
 
 # --- TICKET ACTIONS ---
 class TicketActionView(discord.ui.View):
@@ -90,6 +107,7 @@ class DB_Manager(commands.Bot):
     async def setup_hook(self):
         self.add_view(TicketView())
         self.add_view(TicketActionView())
+        self.add_view(OrderView())
 
 bot = DB_Manager()
 
@@ -127,7 +145,52 @@ async def on_member_join(member):
 
     await channel.send(content=f"Welcome {member.mention}! Glad to have you with us.", embed=embed)
 
-# --- COMMANDS ---
+# --- NEW COMMANDS ADDED AS REQUESTED ---
+
+@bot.tree.command(name="tos", description="Terms of Service for Bots Developer")
+async def tos(interaction: discord.Interaction):
+    embed = discord.Embed(title="📜 Terms of Service", color=0x2b2d31, timestamp=datetime.datetime.utcnow())
+    embed.add_field(name="1. Usage", value="Our bots are for legal use only. Reverse engineering is prohibited.", inline=False)
+    embed.add_field(name="2. Payments", value="All payments are upfront or 50-50 based on the project scale. No refunds after delivery.", inline=False)
+    embed.add_field(name="3. Support", value="Lifetime bug support for premium clients. Feature additions may cost extra.", inline=False)
+    embed.set_footer(text="By ordering, you agree to these terms.")
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="profile", description="View your premium client profile")
+async def profile(interaction: discord.Interaction, member: discord.Member = None):
+    member = member or interaction.user
+    data = get_user_data(member.id)
+    
+    # Trust Level Logic
+    trust_level = "Newbie"
+    if data["orders"] > 10: trust_level = "Veteran ⭐"
+    elif data["orders"] > 5: trust_level = "Trusted ✅"
+    
+    # Role Determination
+    role_names = [role.name for role in member.roles if role.id in ROLES.values()]
+    current_tier = role_names[0] if role_names else "No Tier"
+
+    embed = discord.Embed(title=f"💠 {member.name}'s Neural Interface", color=0x2b2d31)
+    embed.set_thumbnail(url=member.display_avatar.url if member.display_avatar else None)
+    
+    embed.add_field(name="🆔 Identity", value=f"**User:** {member.mention}\n**Tier:** `{current_tier}`", inline=True)
+    embed.add_field(name="🛡️ Trust Level", value=f"`{trust_level}`", inline=True)
+    embed.add_field(name="📊 Statistics", value=f"**Orders:** `{data['orders']}`\n**Spent:** `${data['spent']}`", inline=False)
+    
+    embed.set_footer(text="Bots Developer Premium Interface", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="order", description="Initialize a payment")
+async def order(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="💳 Secure Payment Portal",
+        description="Select your preferred payment method below.\n\n**Note:** Once payment is done, please share the screenshot in your ticket.",
+        color=0x2b2d31
+    )
+    embed.set_footer(text="Encryption Active • Secure Transaction")
+    await interaction.response.send_message(embed=embed, view=OrderView())
+
+# --- REST OF THE COMMANDS ---
 
 @bot.tree.command(name="setup-ticket", description="Setup the ticket system")
 async def setup_ticket(interaction: discord.Interaction):
@@ -151,13 +214,19 @@ async def vouch(interaction: discord.Interaction, stars: int, feedback: str):
 @bot.tree.command(name="set-tier", description="Assign client roles")
 async def set_tier(interaction: discord.Interaction, member: discord.Member, amount: int):
     if interaction.user.id != OWNER_ID: return
+    
+    # Update stats
+    data = get_user_data(member.id)
+    data["orders"] += 1
+    data["spent"] += amount
+
     role_id = ROLES["Client"]
     if amount >= 50000: role_id = ROLES["Elite"]
     elif amount >= 20000: role_id = ROLES["Prime"]
     elif amount >= 10000: role_id = ROLES["Vested"]
     role = interaction.guild.get_role(role_id)
     if role: await member.add_roles(role)
-    await interaction.response.send_message(f"✅ {member.mention} promoted!")
+    await interaction.response.send_message(f"✅ {member.mention} promoted and stats updated!")
 
 @bot.tree.command(name="features", description="List of all bot capabilities")
 async def features(interaction: discord.Interaction):
@@ -193,4 +262,4 @@ async def health(interaction: discord.Interaction):
 # Start
 keep_alive()
 bot.run(TOKEN)
-        
+    
