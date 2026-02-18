@@ -113,11 +113,20 @@ async def on_message(message):
         data["balance"] += 1; data["msg_count"] = 0
     await bot.process_commands(message)
 
+# --- WELCOME EVENT FIX ---
+@bot.event
+async def on_member_join(member):
+    channel = bot.get_channel(WELCOME_CHANNEL_ID)
+    if not channel: return
+    embed = discord.Embed(title="✨ A NEW GENIUS HAS ARRIVED!", description=f"Greetings {member.mention}, welcome to **Bots Developer**.\n\n⚡ High-performance & Secure Coding.\n💎 Tier-based Rewards & Lifetime Discounts.\n\n**Getting Started:**\n📍 Open a ticket at <#1471887200487608362> to discuss your ideas.\n📜 Read our rules to ensure a smooth transaction.\n\nWe are now **{len(member.guild.members)}** members strong!", color=0x2b2d31, timestamp=datetime.datetime.utcnow())
+    if member.display_avatar: embed.set_thumbnail(url=member.display_avatar.url)
+    await channel.send(content=f"Welcome {member.mention}!", embed=embed)
+
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}'); await bot.tree.sync()
 
-# --- GOD LEVEL PROFILE SYSTEM (IMAGE BASED) ---
+# --- PROFILE COMMAND ---
 @bot.tree.command(name="profile", description="View your 4D Neural Profile Interface")
 async def profile(interaction: discord.Interaction, member: discord.Member = None):
     await interaction.response.defer()
@@ -149,7 +158,7 @@ async def profile(interaction: discord.Interaction, member: discord.Member = Non
         img.save(b, 'PNG'); b.seek(0)
         await interaction.followup.send(file=discord.File(fp=b, filename='profile.png'))
 
-# --- COMMANDS ---
+# --- OTHER COMMANDS ---
 @bot.tree.command(name="order", description="Initialize a payment & open a ticket")
 async def order(interaction: discord.Interaction):
     embed = discord.Embed(title="💳 Neural Payment Portal", description="Select your payment method. Clicking a button will automatically open a secure ticket for your order.", color=0x2b2d31)
@@ -215,4 +224,4 @@ async def setup_ticket(interaction: discord.Interaction):
 
 keep_alive()
 bot.run(TOKEN)
-        
+    
