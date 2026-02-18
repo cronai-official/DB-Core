@@ -30,6 +30,7 @@ GUILD_ID = 1471883562004516924
 VOUCH_CHANNEL_ID = 1471887232708382730
 TICKET_CATEGORY_ID = 1471891813106188574
 WELCOME_CHANNEL_ID = 1472275010709098705
+TICKET_CHANNEL_ID = 1471887200487608362 
 OWNER_ID = 1243980401890951310
 
 ROLES = {
@@ -39,8 +40,7 @@ ROLES = {
     "Client": 1471888403514523739
 }
 
-# --- DATABASE SIMULATION (Replace with real DB if needed) ---
-# For now, it tracks stats in memory
+# --- DATABASE SIMULATION ---
 user_stats = {} 
 
 def get_user_data(user_id):
@@ -57,13 +57,18 @@ def calculate_health_stats(guild):
     total_health = int((security_score + activity_score) / 2)
     return total_health, security_score, activity_score
 
-# --- PAYMENT BUTTONS ---
+# --- PAYMENT BUTTONS (MODIFIED: OPENS TICKET DIRECTLY) ---
 class OrderView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-        # Replace these links with your actual payment links
-        self.add_item(discord.ui.Button(label="Pay via PayPal 💳", url="https://paypal.me/YOUR_ID", style=discord.ButtonStyle.link))
-        self.add_item(discord.ui.Button(label="Pay via UPI 📱", url="https://upilinks.in/payment-link", style=discord.ButtonStyle.link))
+
+    @discord.ui.button(label="Pay via PayPal 💳", style=discord.ButtonStyle.grey, custom_id="pay_paypal_btn")
+    async def pay_paypal(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await TicketView().open_ticket(interaction, button)
+
+    @discord.ui.button(label="Pay via UPI 📱", style=discord.ButtonStyle.grey, custom_id="pay_upi_btn")
+    async def pay_upi(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await TicketView().open_ticket(interaction, button)
 
 # --- TICKET ACTIONS ---
 class TicketActionView(discord.ui.View):
@@ -98,7 +103,10 @@ class TicketView(discord.ui.View):
         channel = await guild.create_text_channel(name=f"ticket-{interaction.user.name}", category=category, overwrites=overwrites)
         embed = discord.Embed(title="✨ Session Started", description=f"Welcome {interaction.user.mention},\nThe developer <@{OWNER_ID}> has been notified. Please state your requirements and budget below.", color=0x2b2d31)
         await channel.send(embed=embed, view=TicketActionView())
-        await interaction.response.send_message(f"Ticket Created: {channel.mention}", ephemeral=True)
+        if not interaction.response.is_done():
+            await interaction.response.send_message(f"Ticket Created: {channel.mention}", ephemeral=True)
+        else:
+            await interaction.followup.send(f"Ticket Created: {channel.mention}", ephemeral=True)
 
 class DB_Manager(commands.Bot):
     def __init__(self):
@@ -116,7 +124,7 @@ async def on_ready():
     print(f'Logged in as {bot.user}')
     await bot.tree.sync()
 
-# --- PREVIOUS PREMIUM WELCOME SYSTEM RESTORED ---
+# --- MODIFIED WELCOME SYSTEM ---
 @bot.event
 async def on_member_join(member):
     channel = bot.get_channel(WELCOME_CHANNEL_ID)
@@ -126,11 +134,10 @@ async def on_member_join(member):
         title="✨ A NEW GENIUS HAS ARRIVED!",
         description=f"Greetings {member.mention}, welcome to **Bots Developer**.\n\n"
                     f"**Why choose our services?**\n"
-                    f"🚀 Access to 50+ Custom Modular Solutions.\n"
                     f"⚡ High-performance & Secure Coding.\n"
                     f"💎 Tier-based Rewards & Lifetime Discounts.\n\n"
                     f"**Getting Started:**\n"
-                    f"📍 Open a ticket at <#1471891813106188574> to discuss your ideas.\n"
+                    f"📍 Open a ticket at <#{TICKET_CHANNEL_ID}> to discuss your ideas.\n"
                     f"📜 Read our rules to ensure a smooth transaction.\n\n"
                     f"We are now **{len(member.guild.members)}** members strong!",
         color=0x2b2d31,
@@ -145,7 +152,7 @@ async def on_member_join(member):
 
     await channel.send(content=f"Welcome {member.mention}! Glad to have you with us.", embed=embed)
 
-# --- NEW COMMANDS ADDED AS REQUESTED ---
+# --- CORE COMMANDS ---
 
 @bot.tree.command(name="tos", description="Terms of Service for Bots Developer")
 async def tos(interaction: discord.Interaction):
@@ -161,12 +168,10 @@ async def profile(interaction: discord.Interaction, member: discord.Member = Non
     member = member or interaction.user
     data = get_user_data(member.id)
     
-    # Trust Level Logic
     trust_level = "Newbie"
     if data["orders"] > 10: trust_level = "Veteran ⭐"
     elif data["orders"] > 5: trust_level = "Trusted ✅"
     
-    # Role Determination
     role_names = [role.name for role in member.roles if role.id in ROLES.values()]
     current_tier = role_names[0] if role_names else "No Tier"
 
@@ -177,7 +182,7 @@ async def profile(interaction: discord.Interaction, member: discord.Member = Non
     embed.add_field(name="🛡️ Trust Level", value=f"`{trust_level}`", inline=True)
     embed.add_field(name="📊 Statistics", value=f"**Orders:** `{data['orders']}`\n**Spent:** `${data['spent']}`", inline=False)
     
-    embed.set_footer(text="Bots Developer Premium Interface", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+    embed.set_footer(text="Bots Developer Premium Interface")
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="order", description="Initialize a payment")
@@ -190,7 +195,15 @@ async def order(interaction: discord.Interaction):
     embed.set_footer(text="Encryption Active • Secure Transaction")
     await interaction.response.send_message(embed=embed, view=OrderView())
 
-# --- REST OF THE COMMANDS ---
+@bot.tree.command(name="features", description="List of all bot commands")
+async def features(interaction: discord.Interaction):
+    embed = discord.Embed(title="🛠️ Bot Command Interface", color=0x2b2d31)
+    embed.add_field(name="User Commands", value="• `/profile` - Check your stats\n• `/order` - Get payment links\n• `/vouch` - Post feedback\n• `/tos` - View terms", inline=False)
+    embed.add_field(name="Utility", value="• `/health` - Server diagnostics\n• `/setup-ticket` - Admin setup", inline=False)
+    embed.set_footer(text="Developed for Bots Developer")
+    await interaction.response.send_message(embed=embed)
+
+# --- ADMIN COMMANDS ---
 
 @bot.tree.command(name="setup-ticket", description="Setup the ticket system")
 async def setup_ticket(interaction: discord.Interaction):
@@ -211,32 +224,21 @@ async def vouch(interaction: discord.Interaction, stars: int, feedback: str):
     await vouch_chan.send(embed=embed)
     await interaction.response.send_message("Feedback posted!", ephemeral=True)
 
-@bot.tree.command(name="set-tier", description="Assign client roles")
+@bot.tree.command(name="set-tier", description="Assign client roles and update stats")
 async def set_tier(interaction: discord.Interaction, member: discord.Member, amount: int):
     if interaction.user.id != OWNER_ID: return
-    
-    # Update stats
     data = get_user_data(member.id)
     data["orders"] += 1
     data["spent"] += amount
-
     role_id = ROLES["Client"]
     if amount >= 50000: role_id = ROLES["Elite"]
     elif amount >= 20000: role_id = ROLES["Prime"]
     elif amount >= 10000: role_id = ROLES["Vested"]
     role = interaction.guild.get_role(role_id)
     if role: await member.add_roles(role)
-    await interaction.response.send_message(f"✅ {member.mention} promoted and stats updated!")
+    await interaction.response.send_message(f"✅ {member.mention} stats updated and role assigned!")
 
-@bot.tree.command(name="features", description="List of all bot capabilities")
-async def features(interaction: discord.Interaction):
-    embed = discord.Embed(title="🛠️ Advanced Bot Capabilities", color=0x2b2d31)
-    embed.add_field(name="Automation", value="• Web Scraping\n• Social Media APIs\n• Auto-Mod\n• Webhooks", inline=True)
-    embed.add_field(name="Economy", value="• Multi-Currency\n• Shop Logic\n• Gambling\n• Trading", inline=True)
-    embed.set_footer(text="Equipped with 50+ custom modular solutions.")
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="health", description="Analyze server integrity and activity visually")
+@bot.tree.command(name="health", description="Analyze server integrity")
 async def health(interaction: discord.Interaction):
     await interaction.response.defer()
     score, sec_score, act_score = calculate_health_stats(interaction.guild)
@@ -255,11 +257,10 @@ async def health(interaction: discord.Interaction):
         img.save(image_binary, 'PNG')
         image_binary.seek(0)
         file = discord.File(fp=image_binary, filename='health.png')
-        embed = discord.Embed(title=f"🔍 Health Analysis: {interaction.guild.name}", color=0x2b2d31)
+        embed = discord.Embed(title=f"🔍 Health Analysis", color=0x2b2d31)
         embed.set_image(url="attachment://health.png")
         await interaction.followup.send(file=file, embed=embed)
 
-# Start
 keep_alive()
 bot.run(TOKEN)
     
