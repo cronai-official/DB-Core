@@ -6,7 +6,7 @@ import os
 import asyncio
 import io 
 import random
-from PIL import Image, ImageDraw 
+from PIL import Image, ImageDraw, ImageFont
 from flask import Flask
 from threading import Thread
 
@@ -39,23 +39,14 @@ ROLES = {
 
 # --- DATABASE SIMULATION ---
 user_stats = {} 
-msg_cooldown = {} # Anti-spam for Credits
+msg_cooldown = {}
 
 def get_user_data(user_id):
     if user_id not in user_stats:
         user_stats[user_id] = {"orders": 0, "spent": 0, "balance": 0, "msg_count": 0}
     return user_stats[user_id]
 
-# --- HEALTH ANALYSIS LOGIC ---
-def calculate_health_stats(guild):
-    admin_count = len([m for m in guild.members if m.guild_permissions.administrator])
-    security_score = 100 - (admin_count * 10) if admin_count < 10 else 10
-    online = len([m for m in guild.members if m.status != discord.Status.offline])
-    activity_score = int((online / guild.member_count) * 100) if guild.member_count > 0 else 0
-    total_health = int((security_score + activity_score) / 2)
-    return total_health, security_score, activity_score
-
-# --- TICKET CORE FUNCTION (FIXED BUTTON BUG) ---
+# --- TICKET LOGIC ---
 async def create_ticket_logic(interaction: discord.Interaction, title="Session Started", reason="General Query"):
     guild = interaction.guild
     category = guild.get_channel(TICKET_CATEGORY_ID)
@@ -106,7 +97,7 @@ class DB_Manager(commands.Bot):
 
 bot = DB_Manager()
 
-# --- ECONOMY & SPAM PROOF MINING ---
+# --- ECONOMY SYSTEM ---
 @bot.event
 async def on_message(message):
     if message.author.bot: return
@@ -122,96 +113,115 @@ async def on_message(message):
         data["balance"] += 1; data["msg_count"] = 0
     await bot.process_commands(message)
 
-# --- BOT EVENTS ---
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}'); await bot.tree.sync()
 
-@bot.event
-async def on_member_join(member):
-    channel = bot.get_channel(WELCOME_CHANNEL_ID)
-    if not channel: return
-    embed = discord.Embed(title="✨ A NEW GENIUS HAS ARRIVED!", description=f"Greetings {member.mention}, welcome to **Bots Developer**.\n📍 Open a ticket at <#{TICKET_CHANNEL_ID}> to discuss ideas.\nWe are now **{len(member.guild.members)}** members strong!", color=0x2b2d31, timestamp=datetime.datetime.utcnow())
-    if member.display_avatar: embed.set_thumbnail(url=member.display_avatar.url)
-    await channel.send(content=f"Welcome {member.mention}!", embed=embed)
-
-# --- CORE COMMANDS (ORIGINAL) ---
-@bot.tree.command(name="tos", description="Terms of Service for Bots Developer")
-async def tos(interaction: discord.Interaction):
-    embed = discord.Embed(title="📜 Terms of Service", color=0x2b2d31)
-    embed.add_field(name="1. Usage", value="Our bots are for legal use only.", inline=False)
-    embed.add_field(name="2. Payments", value="Upfront or 50-50. No refunds.", inline=False)
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="profile", description="View your premium client profile")
+# --- GOD LEVEL PROFILE SYSTEM (IMAGE BASED) ---
+@bot.tree.command(name="profile", description="View your 4D Neural Profile Interface")
 async def profile(interaction: discord.Interaction, member: discord.Member = None):
+    await interaction.response.defer()
     member = member or interaction.user
     data = get_user_data(member.id)
-    embed = discord.Embed(title=f"💠 {member.name}'s Profile", color=0x2b2d31)
-    embed.add_field(name="Identity", value=f"Credits: 💠 `{data['balance']}`\nOrders: `{data['orders']}`", inline=True)
-    await interaction.response.send_message(embed=embed)
+    
+    # Create God-Level Canvas
+    width, height = 800, 450
+    img = Image.new('RGB', (width, height), color=(10, 10, 15))
+    draw = ImageDraw.Draw(img)
+    
+    # Background Aesthetic (3D Gradient Style)
+    for i in range(height):
+        color = (15 + i//20, 15 + i//30, 25 + i//10)
+        draw.line([(0, i), (width, i)], fill=color)
 
-@bot.tree.command(name="order", description="Initialize a payment")
-async def order(interaction: discord.Interaction):
-    embed = discord.Embed(title="💳 Secure Payment Portal", description="Select method below.", color=0x2b2d31)
-    await interaction.response.send_message(embed=embed, view=OrderView())
+    # User Avatar
+    avatar_asset = member.display_avatar.with_format("png")
+    avatar_data = await avatar_asset.read()
+    avatar_img = Image.open(io.BytesIO(avatar_data)).convert("RGBA").resize((180, 180))
+    
+    # Rounded Avatar
+    mask = Image.new('L', (180, 180), 0)
+    draw_mask = ImageDraw.Draw(mask)
+    draw_mask.ellipse((0, 0, 180, 180), fill=255)
+    img.paste(avatar_img, (50, 100), mask)
 
-@bot.tree.command(name="features", description="List of all bot commands")
-async def features(interaction: discord.Interaction):
-    embed = discord.Embed(title="🛠️ Bot Command Interface", color=0x2b2d31)
-    embed.add_field(name="Commands", value="`/profile`, `/order`, `/vouch`, `/tos`, `/health`, `/wallet`, `/gamble`, `/withdraw`", inline=False)
-    await interaction.response.send_message(embed=embed)
+    # Texts & Stats
+    draw.text((260, 100), f"{member.name.upper()}", fill=(255, 255, 255))
+    draw.text((260, 150), f"CREDITS: 💠 {data['balance']}", fill=(0, 200, 255))
+    draw.text((260, 190), f"TOTAL ORDERS: {data['orders']}", fill=(200, 200, 200))
+    
+    # 3D Progress Bar
+    draw.rectangle([260, 240, 700, 260], fill=(40, 40, 50))
+    progress = min((data['balance'] / 1000) * 440, 440) 
+    draw.rectangle([260, 240, 260 + progress, 260], fill=(0, 255, 150))
+    draw.text((260, 270), f"REDEEM PROGRESS: {int((progress/440)*100)}%", fill=(255, 255, 255))
 
-@bot.tree.command(name="vouch", description="Submit your feedback")
-async def vouch(interaction: discord.Interaction, stars: int, feedback: str):
-    vouch_chan = bot.get_channel(VOUCH_CHANNEL_ID)
-    embed = discord.Embed(title="⭐ Client Feedback", color=0x00ff7f); embed.add_field(name="Rating", value="★" * stars); embed.add_field(name="Comment", value=feedback, inline=False)
-    await vouch_chan.send(embed=embed); await interaction.response.send_message("Feedback posted!", ephemeral=True)
-
-@bot.tree.command(name="health", description="Analyze server integrity")
-async def health(interaction: discord.Interaction):
-    await interaction.response.defer()
-    score, sec, act = calculate_health_stats(interaction.guild)
-    img = Image.new('RGB', (600, 300), color=(20, 20, 20)); draw = ImageDraw.Draw(img)
-    draw.text((230, 250), f"SCORE: {score}/100", fill=(255,255,255))
     with io.BytesIO() as b:
         img.save(b, 'PNG'); b.seek(0)
-        await interaction.followup.send(file=discord.File(fp=b, filename='h.png'))
+        await interaction.followup.send(file=discord.File(fp=b, filename='profile.png'))
 
-# --- NEW ECONOMY COMMANDS (WITH ANIMATION) ---
-@bot.tree.command(name="wallet", description="View your Neural Credits balance")
+# --- IMPROVED COMMANDS ---
+@bot.tree.command(name="vouch", description="Submit feedback (1-5 Stars)")
+async def vouch(interaction: discord.Interaction, stars: int, feedback: str):
+    if not (1 <= stars <= 5):
+        return await interaction.response.send_message("❌ Error: Rating must be between 1 and 5 stars!", ephemeral=True)
+    
+    vouch_chan = bot.get_channel(VOUCH_CHANNEL_ID)
+    embed = discord.Embed(title="⭐ New Client Vouch", color=0x00ff7f, timestamp=datetime.datetime.utcnow())
+    embed.add_field(name="Client", value=interaction.user.mention, inline=True)
+    embed.add_field(name="Rating", value="★" * stars, inline=True)
+    embed.add_field(name="Feedback", value=f"```\n{feedback}\n```", inline=False)
+    await vouch_chan.send(embed=embed)
+    await interaction.response.send_message("✅ Your vouch has been recorded!", ephemeral=True)
+
+@bot.tree.command(name="tos", description="Strict Terms of Service")
+async def tos(interaction: discord.Interaction):
+    embed = discord.Embed(title="📜 Official Terms of Service", color=0x2b2d31)
+    embed.add_field(name="⚖️ Usage", value="Bots are for authorized use only. No leaking/reselling.", inline=False)
+    embed.add_field(name="💸 Payments", value="Payments are non-refundable once work starts. 50% advance required.", inline=False)
+    embed.add_field(name="🛠️ Warranty", value="Lifetime bug fixes for 50$+ orders. Feature updates extra.", inline=False)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="features", description="Detailed Command List")
+async def features(interaction: discord.Interaction):
+    embed = discord.Embed(title="🛠️ Neural Command Interface", color=0x2b2d31)
+    embed.add_field(name="👤 User", value="`/profile` - God Level UI\n`/wallet` - Check Credits\n`/vouch` - Rate 1-5 Stars", inline=False)
+    embed.add_field(name="💳 Economy", value="`/gamble` - Double Credits\n`/withdraw` - Redeem Bot\n`/order` - Buy Services", inline=False)
+    embed.add_field(name="📜 Legal", value="`/tos` - Server Rules", inline=False)
+    await interaction.response.send_message(embed=embed)
+
+# --- ECONOMY CORE ---
+@bot.tree.command(name="wallet", description="View your credits")
 async def wallet(interaction: discord.Interaction):
     data = get_user_data(interaction.user.id)
-    await interaction.response.send_message(f"💠 **Wallet:** `{data['balance']} Credits` | 📩 **Progress:** `{data['msg_count']}/2` msgs")
+    await interaction.response.send_message(f"💠 **Balance:** `{data['balance']} Neural Credits` | **Mining:** `{data['msg_count']}/2` msgs")
 
-@bot.tree.command(name="gamble", description="Risk your credits to double them")
+@bot.tree.command(name="gamble", description="Gamble credits with animation")
 async def gamble(interaction: discord.Interaction, amount: int):
     data = get_user_data(interaction.user.id)
-    if amount <= 0 or data["balance"] < amount: return await interaction.response.send_message("Insufficient credits!", ephemeral=True)
-    
-    await interaction.response.send_message(f"🎰 **Spinning the Neural Reel...** (Bet: {amount} 💠)")
-    await asyncio.sleep(2) # Animation delay
-    
+    if amount <= 0 or data["balance"] < amount: return await interaction.response.send_message("Insufficient funds!", ephemeral=True)
+    await interaction.response.send_message("🎰 **ROLLING...**")
+    await asyncio.sleep(2)
     if random.choice([True, False]):
         data["balance"] += amount
-        await interaction.edit_original_response(content=f"📈 **WIN!** Your credits doubled! Balance: `{data['balance']}` 💠")
+        await interaction.edit_original_response(content=f"✅ **WIN!** New Balance: `{data['balance']}` 💠")
     else:
         data["balance"] -= amount
-        await interaction.edit_original_response(content=f"📉 **LOSS!** Better luck next time. Balance: `{data['balance']}` 💠")
+        await interaction.edit_original_response(content=f"❌ **LOST!** New Balance: `{data['balance']}` 💠")
 
-@bot.tree.command(name="withdraw", description="Redeem credits for a free bot")
+@bot.tree.command(name="withdraw", description="Redeem credits")
 async def withdraw(interaction: discord.Interaction, amount: int):
     data = get_user_data(interaction.user.id)
-    if amount < 1000: return await interaction.response.send_message("Minimum 1000 Credits needed!", ephemeral=True)
-    if data["balance"] < amount: return await interaction.response.send_message("Insufficient credits!", ephemeral=True)
+    if amount < 1000: return await interaction.response.send_message("Min 1000 Credits!", ephemeral=True)
+    if data["balance"] < amount: return await interaction.response.send_message("No balance!", ephemeral=True)
     data["balance"] -= amount
-    await create_ticket_logic(interaction, "Withdrawal Request", f"Redeeming {amount} Credits for Bot Services.")
+    await create_ticket_logic(interaction, "Withdrawal", f"Redeeming {amount} Credits")
 
-@bot.tree.command(name="setup-ticket", description="Setup the ticket system")
+@bot.tree.command(name="setup-ticket", description="Setup tickets")
 async def setup_ticket(interaction: discord.Interaction):
     if interaction.user.id != OWNER_ID: return
-    await interaction.channel.send(embed=discord.Embed(title="📥 Create a Ticket", color=0x2b2d31), view=TicketView())
-    await interaction.response.send_message("Setup complete.", ephemeral=True)
+    await interaction.channel.send(view=TicketView())
+    await interaction.response.send_message("Done.", ephemeral=True)
 
 keep_alive()
 bot.run(TOKEN)
