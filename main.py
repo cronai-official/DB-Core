@@ -68,10 +68,10 @@ class OrderView(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
     @discord.ui.button(label="Pay via PayPal 💳", style=discord.ButtonStyle.grey, custom_id="pay_paypal_btn")
     async def pay_paypal(self, interaction, button):
-        await create_ticket_logic(interaction, "PayPal Payment", "Initiating PayPal Payment")
+        await create_ticket_logic(interaction, "PayPal Payment", "Initiating PayPal Payment Request")
     @discord.ui.button(label="Pay via UPI 📱", style=discord.ButtonStyle.grey, custom_id="pay_upi_btn")
     async def pay_upi(self, interaction, button):
-        await create_ticket_logic(interaction, "UPI Payment", "Initiating UPI Payment")
+        await create_ticket_logic(interaction, "UPI Payment", "Initiating UPI Payment Request")
 
 class TicketActionView(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
@@ -123,74 +123,64 @@ async def profile(interaction: discord.Interaction, member: discord.Member = Non
     await interaction.response.defer()
     member = member or interaction.user
     data = get_user_data(member.id)
-    
-    # Create God-Level Canvas
     width, height = 800, 450
     img = Image.new('RGB', (width, height), color=(10, 10, 15))
     draw = ImageDraw.Draw(img)
-    
-    # Background Aesthetic (3D Gradient Style)
     for i in range(height):
         color = (15 + i//20, 15 + i//30, 25 + i//10)
         draw.line([(0, i), (width, i)], fill=color)
-
-    # User Avatar
-    avatar_asset = member.display_avatar.with_format("png")
-    avatar_data = await avatar_asset.read()
-    avatar_img = Image.open(io.BytesIO(avatar_data)).convert("RGBA").resize((180, 180))
-    
-    # Rounded Avatar
-    mask = Image.new('L', (180, 180), 0)
-    draw_mask = ImageDraw.Draw(mask)
-    draw_mask.ellipse((0, 0, 180, 180), fill=255)
-    img.paste(avatar_img, (50, 100), mask)
-
-    # Texts & Stats
+    try:
+        avatar_asset = member.display_avatar.with_format("png")
+        avatar_data = await avatar_asset.read()
+        avatar_img = Image.open(io.BytesIO(avatar_data)).convert("RGBA").resize((180, 180))
+        mask = Image.new('L', (180, 180), 0)
+        draw_mask = ImageDraw.Draw(mask)
+        draw_mask.ellipse((0, 0, 180, 180), fill=255)
+        img.paste(avatar_img, (50, 100), mask)
+    except: pass
     draw.text((260, 100), f"{member.name.upper()}", fill=(255, 255, 255))
     draw.text((260, 150), f"CREDITS: 💠 {data['balance']}", fill=(0, 200, 255))
     draw.text((260, 190), f"TOTAL ORDERS: {data['orders']}", fill=(200, 200, 200))
-    
-    # 3D Progress Bar
     draw.rectangle([260, 240, 700, 260], fill=(40, 40, 50))
     progress = min((data['balance'] / 1000) * 440, 440) 
     draw.rectangle([260, 240, 260 + progress, 260], fill=(0, 255, 150))
     draw.text((260, 270), f"REDEEM PROGRESS: {int((progress/440)*100)}%", fill=(255, 255, 255))
-
     with io.BytesIO() as b:
         img.save(b, 'PNG'); b.seek(0)
         await interaction.followup.send(file=discord.File(fp=b, filename='profile.png'))
 
-# --- IMPROVED COMMANDS ---
+# --- COMMANDS ---
+@bot.tree.command(name="order", description="Initialize a payment & open a ticket")
+async def order(interaction: discord.Interaction):
+    embed = discord.Embed(title="💳 Neural Payment Portal", description="Select your payment method. Clicking a button will automatically open a secure ticket for your order.", color=0x2b2d31)
+    embed.set_footer(text="Secure Transaction • Bots Developer")
+    await interaction.response.send_message(embed=embed, view=OrderView())
+
 @bot.tree.command(name="vouch", description="Submit feedback (1-5 Stars)")
 async def vouch(interaction: discord.Interaction, stars: int, feedback: str):
-    if not (1 <= stars <= 5):
-        return await interaction.response.send_message("❌ Error: Rating must be between 1 and 5 stars!", ephemeral=True)
-    
+    if not (1 <= stars <= 5): return await interaction.response.send_message("❌ Error: Rating must be 1-5 stars!", ephemeral=True)
     vouch_chan = bot.get_channel(VOUCH_CHANNEL_ID)
     embed = discord.Embed(title="⭐ New Client Vouch", color=0x00ff7f, timestamp=datetime.datetime.utcnow())
-    embed.add_field(name="Client", value=interaction.user.mention, inline=True)
     embed.add_field(name="Rating", value="★" * stars, inline=True)
     embed.add_field(name="Feedback", value=f"```\n{feedback}\n```", inline=False)
     await vouch_chan.send(embed=embed)
-    await interaction.response.send_message("✅ Your vouch has been recorded!", ephemeral=True)
+    await interaction.response.send_message("✅ Recorded!", ephemeral=True)
 
 @bot.tree.command(name="tos", description="Strict Terms of Service")
 async def tos(interaction: discord.Interaction):
     embed = discord.Embed(title="📜 Official Terms of Service", color=0x2b2d31)
-    embed.add_field(name="⚖️ Usage", value="Bots are for authorized use only. No leaking/reselling.", inline=False)
-    embed.add_field(name="💸 Payments", value="Payments are non-refundable once work starts. 50% advance required.", inline=False)
-    embed.add_field(name="🛠️ Warranty", value="Lifetime bug fixes for 50$+ orders. Feature updates extra.", inline=False)
+    embed.add_field(name="⚖️ Usage", value="Bots are for authorized use only.", inline=False)
+    embed.add_field(name="💸 Payments", value="Non-refundable. 50% advance required.", inline=False)
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="features", description="Detailed Command List")
 async def features(interaction: discord.Interaction):
     embed = discord.Embed(title="🛠️ Neural Command Interface", color=0x2b2d31)
-    embed.add_field(name="👤 User", value="`/profile` - God Level UI\n`/wallet` - Check Credits\n`/vouch` - Rate 1-5 Stars", inline=False)
-    embed.add_field(name="💳 Economy", value="`/gamble` - Double Credits\n`/withdraw` - Redeem Bot\n`/order` - Buy Services", inline=False)
-    embed.add_field(name="📜 Legal", value="`/tos` - Server Rules", inline=False)
+    embed.add_field(name="User", value="`/profile`, `/wallet`, `/vouch`", inline=False)
+    embed.add_field(name="Economy", value="`/gamble`, `/withdraw`, `/order`", inline=False)
+    embed.add_field(name="Legal", value="`/tos`", inline=False)
     await interaction.response.send_message(embed=embed)
 
-# --- ECONOMY CORE ---
 @bot.tree.command(name="wallet", description="View your credits")
 async def wallet(interaction: discord.Interaction):
     data = get_user_data(interaction.user.id)
@@ -225,4 +215,4 @@ async def setup_ticket(interaction: discord.Interaction):
 
 keep_alive()
 bot.run(TOKEN)
-    
+        
