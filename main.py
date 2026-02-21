@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 from flask import Flask
 from threading import Thread
 
-# --- WEB SERVER FOR RENDER (KEEP ALIVE) ---
+
 app = Flask('')
 @app.route('/')
 def home(): return "Bot is running!"
@@ -21,7 +21,7 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# --- SETTINGS ---
+
 TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD_ID = 1471883562004516924
 VOUCH_CHANNEL_ID = 1471887232708382730
@@ -37,7 +37,7 @@ ROLES = {
     "Client": 1471888403514523739
 }
 
-# --- DATABASE SIMULATION ---
+
 user_stats = {} 
 msg_cooldown = {}
 
@@ -63,7 +63,7 @@ async def create_ticket_logic(interaction: discord.Interaction, title="Session S
     else:
         await interaction.followup.send(f"Ticket Created: {channel.mention}", ephemeral=True)
 
-# --- VIEWS ---
+
 class OrderView(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
     @discord.ui.button(label="Pay via PayPal 💳", style=discord.ButtonStyle.grey, custom_id="pay_paypal_btn")
@@ -97,7 +97,7 @@ class DB_Manager(commands.Bot):
 
 bot = DB_Manager()
 
-# --- ECONOMY SYSTEM ---
+
 @bot.event
 async def on_message(message):
     if message.author.bot: return
@@ -112,8 +112,7 @@ async def on_message(message):
     if data["msg_count"] >= 2:
         data["balance"] += 1; data["msg_count"] = 0
     await bot.process_commands(message)
-
-# --- WELCOME EVENT FIX ---
+    
 @bot.event
 async def on_member_join(member):
     channel = bot.get_channel(WELCOME_CHANNEL_ID)
@@ -126,7 +125,7 @@ async def on_member_join(member):
 async def on_ready():
     print(f'Logged in as {bot.user}'); await bot.tree.sync()
 
-# --- PROFILE COMMAND ---
+
 @bot.tree.command(name="profile", description="View your 4D Neural Profile Interface")
 async def profile(interaction: discord.Interaction, member: discord.Member = None):
     await interaction.response.defer()
@@ -158,7 +157,7 @@ async def profile(interaction: discord.Interaction, member: discord.Member = Non
         img.save(b, 'PNG'); b.seek(0)
         await interaction.followup.send(file=discord.File(fp=b, filename='profile.png'))
 
-# --- OTHER COMMANDS ---
+
 @bot.tree.command(name="order", description="Initialize a payment & open a ticket")
 async def order(interaction: discord.Interaction):
     embed = discord.Embed(title="💳 Neural Payment Portal", description="Select your payment method. Clicking a button will automatically open a secure ticket for your order.", color=0x2b2d31)
