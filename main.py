@@ -10,22 +10,18 @@ from PIL import Image, ImageDraw, ImageFont
 from flask import Flask
 from threading import Thread
 
-# --- FLASK SERVER (RENDER FIX) --- #
+
 app = Flask('')
 @app.route('/')
 def home(): return "Bot is running!"
-
 def run():
-    # Render dynamic port provide karta hai, 8080 default fallback hai
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
-
 def keep_alive():
     t = Thread(target=run)
-    t.daemon = True # Thread ko background mein rakhega
     t.start()
 
-# --- CONFIGURATION --- #
+
 TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD_ID = 1471883562004516924
 VOUCH_CHANNEL_ID = 1471887232708382730
@@ -41,6 +37,7 @@ ROLES = {
     "Client": 1471888403514523739
 }
 
+
 user_stats = {} 
 msg_cooldown = {}
 
@@ -49,12 +46,8 @@ def get_user_data(user_id):
         user_stats[user_id] = {"orders": 0, "spent": 0, "balance": 0, "msg_count": 0}
     return user_stats[user_id]
 
-# --- TICKET LOGIC FIX (DEFER ADDED) --- #
+# --- TICKET LOGIC ---
 async def create_ticket_logic(interaction: discord.Interaction, title="Session Started", reason="General Query"):
-    # Interaction failed se bachne ke liye pehle hi "Working..." state mein daalna zaroori hai
-    if not interaction.response.is_done():
-        await interaction.response.defer(ephemeral=True)
-    
     guild = interaction.guild
     category = guild.get_channel(TICKET_CATEGORY_ID)
     overwrites = {
@@ -63,19 +56,19 @@ async def create_ticket_logic(interaction: discord.Interaction, title="Session S
         guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
     }
     channel = await guild.create_text_channel(name=f"ticket-{interaction.user.name}", category=category, overwrites=overwrites)
-    
     embed = discord.Embed(title=f"✨ {title}", description=f"Welcome {interaction.user.mention},\nReason: **{reason}**\nThe developer <@{OWNER_ID}> has been notified.", color=0x2b2d31)
     await channel.send(embed=embed, view=TicketActionView())
-    
-    await interaction.followup.send(f"Ticket Created: {channel.mention}", ephemeral=True)
+    if not interaction.response.is_done():
+        await interaction.response.send_message(f"Ticket Created: {channel.mention}", ephemeral=True)
+    else:
+        await interaction.followup.send(f"Ticket Created: {channel.mention}", ephemeral=True)
 
-# --- VIEWS --- #
+
 class OrderView(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
     @discord.ui.button(label="Pay via PayPal 💳", style=discord.ButtonStyle.grey, custom_id="pay_paypal_btn")
     async def pay_paypal(self, interaction, button):
         await create_ticket_logic(interaction, "PayPal Payment", "Initiating PayPal Payment Request")
-
     @discord.ui.button(label="Pay via UPI 📱", style=discord.ButtonStyle.grey, custom_id="pay_upi_btn")
     async def pay_upi(self, interaction, button):
         await create_ticket_logic(interaction, "UPI Payment", "Initiating UPI Payment Request")
@@ -86,11 +79,10 @@ class TicketActionView(discord.ui.View):
     async def close_ticket(self, interaction, button):
         await interaction.channel.set_permissions(interaction.user, send_messages=False, read_messages=True)
         await interaction.response.send_message(embed=discord.Embed(description="🔒 **Ticket Closed.**", color=0xff0000))
-
     @discord.ui.button(label="Delete 🗑️", style=discord.ButtonStyle.grey, custom_id="delete_ticket_btn")
     async def delete_ticket(self, interaction, button):
         await interaction.response.send_message("🗑️ **Deleting...**")
-        await asyncio.sleep(2); await interaction.channel.delete()
+        await asyncio.sleep(3); await interaction.channel.delete()
 
 class TicketView(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
@@ -98,73 +90,138 @@ class TicketView(discord.ui.View):
     async def open_ticket(self, interaction, button):
         await create_ticket_logic(interaction)
 
-# --- BOT CLASS SETUP --- #
 class DB_Manager(commands.Bot):
-    def __init__(self):
-        intents = discord.Intents.all()
-        super().__init__(command_prefix="!", intents=intents)
-
+    def __init__(self): super().__init__(command_prefix="!", intents=discord.Intents.all())
     async def setup_hook(self):
-        # Buttons register kar rahe hain taaki restart ke baad bhi chalein
-        self.add_view(TicketView())
-        self.add_view(TicketActionView())
-        self.add_view(OrderView())
-        # ---- SYNC FIX: Yahan se sync hata diya hai taaki Rate Limit na ho ----
+        self.add_view(TicketView()); self.add_view(TicketActionView()); self.add_view(OrderView())
 
 bot = DB_Manager()
 
-@bot.event
-async def on_ready():
-    print(f'✅ Logged in as {bot.user}')
-    # ---- GLOBAL SYNC FIX (ONLY ONCE) ----
-    # Isse bot online aate hi baar-baar sync nahi karega agar koi change nahi hai
-    try:
-        # bot.tree.sync() ko yahan rehne de sakte hain par Render par 
-        # baar-baar restart hone se ye error deta hai.
-        # Isko manually ek baar command se sync karna better hai.
-        print("Bot is ready and views are active!")
-    except Exception as e:
-        print(f"Sync Error: {e}")
-
-# --- SYNC COMMAND (MANUAL) --- #
-# Isse tu manually commands sync kar sakta hai jab zaroorat ho
-@bot.command()
-async def sync(ctx):
-    if ctx.author.id == OWNER_ID:
-        await bot.tree.sync()
-        await ctx.send("✅ Slash commands synced globally!")
 
 @bot.event
 async def on_message(message):
     if message.author.bot: return
     user_id = message.author.id
     now = datetime.datetime.now()
-    
-    # Mining cooldown check
     if user_id in msg_cooldown:
         if (now - msg_cooldown[user_id]).total_seconds() < 5:
-            await bot.process_commands(message)
-            return
-            
+            await bot.process_commands(message); return
     msg_cooldown[user_id] = now
     data = get_user_data(user_id)
     data["msg_count"] += 1
     if data["msg_count"] >= 2:
-        data["balance"] += 1
-        data["msg_count"] = 0
+        data["balance"] += 1; data["msg_count"] = 0
     await bot.process_commands(message)
+    
+@bot.event
+async def on_member_join(member):
+    channel = bot.get_channel(WELCOME_CHANNEL_ID)
+    if not channel: return
+    embed = discord.Embed(title="✨ A NEW GENIUS HAS ARRIVED!", description=f"Greetings {member.mention}, welcome to **Bots Developer**.\n\n⚡ High-performance & Secure Coding.\n💎 Tier-based Rewards & Lifetime Discounts.\n\n**Getting Started:**\n📍 Open a ticket at <#1471887200487608362> to discuss your ideas.\n📜 Read our rules to ensure a smooth transaction.\n\nWe are now **{len(member.guild.members)}** members strong!", color=0x2b2d31, timestamp=datetime.datetime.utcnow())
+    if member.display_avatar: embed.set_thumbnail(url=member.display_avatar.url)
+    await channel.send(content=f"Welcome {member.mention}!", embed=embed)
 
-# --- SLASH COMMANDS (SAME AS BEFORE) --- #
-# (Tere profile, gamble, order commands yahan aayenge - Maine unhe touch nahi kiya 
-# kyunki wo functionality wise sahi hain. Bas defer/followup ka dhyan rakhna)
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user}'); await bot.tree.sync()
 
-# --- DEPLOYMENT --- #
-if __name__ == "__main__":
-    keep_alive()
+
+@bot.tree.command(name="profile", description="View your 4D Neural Profile Interface")
+async def profile(interaction: discord.Interaction, member: discord.Member = None):
+    await interaction.response.defer()
+    member = member or interaction.user
+    data = get_user_data(member.id)
+    width, height = 800, 450
+    img = Image.new('RGB', (width, height), color=(10, 10, 15))
+    draw = ImageDraw.Draw(img)
+    for i in range(height):
+        color = (15 + i//20, 15 + i//30, 25 + i//10)
+        draw.line([(0, i), (width, i)], fill=color)
     try:
-        bot.run(TOKEN)
-    except discord.errors.HTTPException as e:
-        if e.status == 429:
-            print("🚨 RATE LIMITED! Change your IP or wait.")
-            os.system("kill 1") # Render ko trigger karega restart ke liye
+        avatar_asset = member.display_avatar.with_format("png")
+        avatar_data = await avatar_asset.read()
+        avatar_img = Image.open(io.BytesIO(avatar_data)).convert("RGBA").resize((180, 180))
+        mask = Image.new('L', (180, 180), 0)
+        draw_mask = ImageDraw.Draw(mask)
+        draw_mask.ellipse((0, 0, 180, 180), fill=255)
+        img.paste(avatar_img, (50, 100), mask)
+    except: pass
+    draw.text((260, 100), f"{member.name.upper()}", fill=(255, 255, 255))
+    draw.text((260, 150), f"CREDITS: 💠 {data['balance']}", fill=(0, 200, 255))
+    draw.text((260, 190), f"TOTAL ORDERS: {data['orders']}", fill=(200, 200, 200))
+    draw.rectangle([260, 240, 700, 260], fill=(40, 40, 50))
+    progress = min((data['balance'] / 1000) * 440, 440) 
+    draw.rectangle([260, 240, 260 + progress, 260], fill=(0, 255, 150))
+    draw.text((260, 270), f"REDEEM PROGRESS: {int((progress/440)*100)}%", fill=(255, 255, 255))
+    with io.BytesIO() as b:
+        img.save(b, 'PNG'); b.seek(0)
+        await interaction.followup.send(file=discord.File(fp=b, filename='profile.png'))
+
+
+@bot.tree.command(name="order", description="Initialize a payment & open a ticket")
+async def order(interaction: discord.Interaction):
+    embed = discord.Embed(title="💳 Neural Payment Portal", description="Select your payment method. Clicking a button will automatically open a secure ticket for your order.", color=0x2b2d31)
+    embed.set_footer(text="Secure Transaction • Bots Developer")
+    await interaction.response.send_message(embed=embed, view=OrderView())
+
+@bot.tree.command(name="vouch", description="Submit feedback (1-5 Stars)")
+async def vouch(interaction: discord.Interaction, stars: int, feedback: str):
+    if not (1 <= stars <= 5): return await interaction.response.send_message("❌ Error: Rating must be 1-5 stars!", ephemeral=True)
+    vouch_chan = bot.get_channel(VOUCH_CHANNEL_ID)
+    embed = discord.Embed(title="⭐ New Client Vouch", color=0x00ff7f, timestamp=datetime.datetime.utcnow())
+    embed.add_field(name="Rating", value="★" * stars, inline=True)
+    embed.add_field(name="Feedback", value=f"```\n{feedback}\n```", inline=False)
+    await vouch_chan.send(embed=embed)
+    await interaction.response.send_message("✅ Recorded!", ephemeral=True)
+
+@bot.tree.command(name="tos", description="Strict Terms of Service")
+async def tos(interaction: discord.Interaction):
+    embed = discord.Embed(title="📜 Official Terms of Service", color=0x2b2d31)
+    embed.add_field(name="⚖️ Usage", value="Bots are for authorized use only.", inline=False)
+    embed.add_field(name="💸 Payments", value="Non-refundable. 50% advance required.", inline=False)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="features", description="Detailed Command List")
+async def features(interaction: discord.Interaction):
+    embed = discord.Embed(title="🛠️ Neural Command Interface", color=0x2b2d31)
+    embed.add_field(name="User", value="`/profile`, `/wallet`, `/vouch`", inline=False)
+    embed.add_field(name="Economy", value="`/gamble`, `/withdraw`, `/order`", inline=False)
+    embed.add_field(name="Legal", value="`/tos`", inline=False)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="wallet", description="View your credits")
+async def wallet(interaction: discord.Interaction):
+    data = get_user_data(interaction.user.id)
+    await interaction.response.send_message(f"💠 **Balance:** `{data['balance']} Neural Credits` | **Mining:** `{data['msg_count']}/2` msgs")
+
+@bot.tree.command(name="gamble", description="Gamble credits with animation")
+async def gamble(interaction: discord.Interaction, amount: int):
+    data = get_user_data(interaction.user.id)
+    if amount <= 0 or data["balance"] < amount: return await interaction.response.send_message("Insufficient funds!", ephemeral=True)
+    await interaction.response.send_message("🎰 **ROLLING...**")
+    await asyncio.sleep(2)
+    if random.choice([True, False]):
+        data["balance"] += amount
+        await interaction.edit_original_response(content=f"✅ **WIN!** New Balance: `{data['balance']}` 💠")
+    else:
+        data["balance"] -= amount
+        await interaction.edit_original_response(content=f"❌ **LOST!** New Balance: `{data['balance']}` 💠")
+
+@bot.tree.command(name="withdraw", description="Redeem credits")
+async def withdraw(interaction: discord.Interaction, amount: int):
+    data = get_user_data(interaction.user.id)
+    if amount < 1000: return await interaction.response.send_message("Min 1000 Credits!", ephemeral=True)
+    if data["balance"] < amount: return await interaction.response.send_message("No balance!", ephemeral=True)
+    data["balance"] -= amount
+    await create_ticket_logic(interaction, "Withdrawal", f"Redeeming {amount} Credits")
+
+@bot.tree.command(name="setup-ticket", description="Setup tickets")
+async def setup_ticket(interaction: discord.Interaction):
+    if interaction.user.id != OWNER_ID: return
+    await interaction.channel.send(view=TicketView())
+    await interaction.response.send_message("Done.", ephemeral=True)
+
+keep_alive()
+bot.run(TOKEN)
+
     
